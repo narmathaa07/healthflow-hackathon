@@ -1,9 +1,6 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import numpy as np
-from datetime import datetime
 
 # Set page configuration
 st.set_page_config(
@@ -36,6 +33,9 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin: 0.5rem 0;
     }
+    .status-good { color: #28a745; font-weight: bold; }
+    .status-warning { color: #ffc107; font-weight: bold; }
+    .status-critical { color: #dc3545; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -116,7 +116,7 @@ def display_scenario_analysis(df, scenario):
     st.subheader("📊 Key Performance Indicators")
     display_key_metrics(filtered_df, scenario)
     
-    # Charts
+    # Charts and Analysis
     col1, col2 = st.columns(2)
     
     with col1:
@@ -125,7 +125,7 @@ def display_scenario_analysis(df, scenario):
     
     with col2:
         display_icu_analysis(filtered_df, scenario)
-        display_comparison_chart(df, filtered_df, scenario)
+        display_comparison_analysis(df, filtered_df, scenario)
     
     # Detailed Data
     st.subheader("📋 Detailed Service Data")
@@ -149,7 +149,7 @@ def filter_data_by_scenario(df, scenario):
     
     elif scenario == "Emergency Crisis":
         # Crisis conditions - strikes, high demand
-        crisis_events = ['strike', 'flu']  # Combine multiple crisis indicators
+        crisis_events = ['strike', 'flu']
         high_demand = df['patients_request'] > df['patients_request'].quantile(0.75)
         return df[(df['event'].isin(crisis_events)) | high_demand]
     
@@ -162,16 +162,16 @@ def display_key_metrics(filtered_df, scenario):
     
     # Bed Occupancy Rate
     avg_occupancy = filtered_df['occupancy_rate'].mean() * 100
-    occupancy_trend = "🟢 Normal" if avg_occupancy < 80 else "🟡 High" if avg_occupancy < 95 else "🔴 Critical"
+    occupancy_status = "🟢 Normal" if avg_occupancy < 80 else "🟡 High" if avg_occupancy < 95 else "🔴 Critical"
     
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric(
-            "🛏️ Average Bed Occupancy Rate", 
+            "🛏️ Average Bed Occupancy", 
             f"{avg_occupancy:.1f}%",
-            occupancy_trend
+            occupancy_status
         )
-        st.write(f"Scenario: {scenario}")
+        st.progress(avg_occupancy / 100)
         st.markdown('</div>', unsafe_allow_html=True)
     
     # Staff Shortage Level
@@ -185,9 +185,9 @@ def display_key_metrics(filtered_df, scenario):
         st.metric(
             "👨‍⚕️ Staff Shortage Level",
             shortage_status,
-            f"Score: {avg_shortage:.1f}"
+            f"Score: {avg_shortage:.1f}/3"
         )
-        st.write("Based on shortage levels")
+        st.progress(avg_shortage / 3)
         st.markdown('</div>', unsafe_allow_html=True)
     
     # ICU Demand Level
@@ -199,16 +199,16 @@ def display_key_metrics(filtered_df, scenario):
         demand_status = "🟢 Low" if avg_demand < 1.5 else "🟡 Moderate" if avg_demand < 2.5 else "🔴 High"
     else:
         avg_demand = 0
-        demand_status = "No ICU Data"
+        demand_status = "No Data"
     
     with col3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
         st.metric(
             "💊 ICU Demand Level",
             demand_status,
-            f"Score: {avg_demand:.1f}"
+            f"Score: {avg_demand:.1f}/3"
         )
-        st.write("ICU-specific analysis")
+        st.progress(avg_demand / 3)
         st.markdown('</div>', unsafe_allow_html=True)
     
     # Patient Refusal Rate
@@ -224,41 +224,25 @@ def display_key_metrics(filtered_df, scenario):
             f"{refusal_rate:.1f}%",
             refusal_status
         )
+        st.progress(min(refusal_rate / 50, 1.0))  # Cap at 50% for visualization
         st.write(f"{total_refused:,} refused of {total_requested:,} requested")
         st.markdown('</div>', unsafe_allow_html=True)
 
 def display_occupancy_analysis(filtered_df, scenario):
-    """Display bed occupancy analysis"""
+    """Display bed occupancy analysis using Streamlit charts"""
     
     st.subheader("🛏️ Bed Occupancy Analysis")
     
     # Occupancy by service
-    fig, ax = plt.subplots(figsize=(10, 6))
-    
     occupancy_by_service = filtered_df.groupby('service')['occupancy_rate'].mean() * 100
     
-    colors = ['#2E86AB' if rate < 80 else '#F7B801' if rate < 95 else '#FF6B6B' 
-             for rate in occupancy_by_service.values]
+    # Create a bar chart using Streamlit
+    chart_data = pd.DataFrame({
+        'Service': occupancy_by_service.index,
+        'Occupancy Rate %': occupancy_by_service.values
+    })
     
-    bars = ax.bar(occupancy_by_service.index, occupancy_by_service.values, color=colors, alpha=0.8)
-    ax.set_title(f'Average Occupancy Rate by Service - {scenario}')
-    ax.set_ylabel('Occupancy Rate (%)')
-    ax.set_ylim(0, 100)
-    
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 2,
-               f'{height:.1f}%', ha='center', va='bottom', fontweight='bold')
-    
-    # Add threshold lines
-    ax.axhline(y=80, color='orange', linestyle='--', alpha=0.7, label='High Occupancy (80%)')
-    ax.axhline(y=95, color='red', linestyle='--', alpha=0.7, label='Critical (95%)')
-    ax.legend()
-    
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    st.pyplot(fig)
+    st.bar_chart(chart_data.set_index('Service'))
     
     # Occupancy distribution
     st.write("**Occupancy Distribution:**")
@@ -269,55 +253,66 @@ def display_occupancy_analysis(filtered_df, scenario):
     critical_occ = len(filtered_df[filtered_df['occupancy_rate'] >= 0.95]) / len(filtered_df) * 100
     
     with col1:
-        st.metric("Low (<80%)", f"{low_occ:.1f}%")
+        st.metric("Low (<80%)", f"{low_occ:.1f}%", delta_color="off")
     with col2:
-        st.metric("High (80-95%)", f"{high_occ:.1f}%")
+        st.metric("High (80-95%)", f"{high_occ:.1f}%", delta_color="off")
     with col3:
-        st.metric("Critical (≥95%)", f"{critical_occ:.1f}%")
+        st.metric("Critical (≥95%)", f"{critical_occ:.1f}%", delta_color="off")
+    
+    # Occupancy status summary
+    avg_occupancy = filtered_df['occupancy_rate'].mean() * 100
+    if avg_occupancy < 80:
+        st.success("✅ Bed occupancy is at manageable levels")
+    elif avg_occupancy < 95:
+        st.warning("⚠️ Bed occupancy is high - consider additional resources")
+    else:
+        st.error("🚨 Critical bed occupancy - immediate action required")
 
 def display_staff_analysis(filtered_df, scenario):
     """Display staff shortage analysis"""
     
     st.subheader("👨‍⚕️ Staff Shortage Analysis")
     
-    # Staff shortage by service
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    # Staff shortage distribution
+    shortage_dist = filtered_df['staff_shortage_level'].value_counts()
     
-    # Shortage levels by service
-    shortage_by_service = pd.crosstab(filtered_df['service'], filtered_df['staff_shortage_level'])
-    shortage_by_service.plot(kind='bar', ax=ax1, color=['#2E86AB', '#F7B801', '#FF6B6B'])
-    ax1.set_title(f'Staff Shortage Levels by Service - {scenario}')
-    ax1.set_ylabel('Number of Records')
-    ax1.legend(title='Shortage Level')
-    plt.setp(ax1.xaxis.get_majorticklabels(), rotation=45)
+    # Create pie chart data
+    shortage_data = pd.DataFrame({
+        'Level': shortage_dist.index,
+        'Count': shortage_dist.values
+    })
     
-    # Staff morale vs shortage
-    shortage_mapping = {'low': 1, 'moderate': 2, 'high': 3}
-    filtered_df['shortage_numeric'] = filtered_df['staff_shortage_level'].map(shortage_mapping)
+    # Display as bar chart
+    st.bar_chart(shortage_data.set_index('Level'))
     
-    scatter = ax2.scatter(filtered_df['shortage_numeric'], filtered_df['staff_morale'], 
-                        alpha=0.6, c=filtered_df['shortage_numeric'], cmap='RdYlGn_r')
-    ax2.set_xlabel('Staff Shortage Level (1=Low, 3=High)')
-    ax2.set_ylabel('Staff Morale')
-    ax2.set_title('Staff Morale vs Shortage Level')
-    ax2.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    st.pyplot(fig)
-    
-    # Staff metrics summary
-    st.write("**Staff Metrics Summary:**")
+    # Staff metrics
     col1, col2 = st.columns(2)
     
     with col1:
         avg_morale = filtered_df['staff_morale'].mean()
-        morale_status = "🟢 Good" if avg_morale > 70 else "🟡 Fair" if avg_morale > 50 else "🔴 Poor"
+        morale_status = "Good" if avg_morale > 70 else "Fair" if avg_morale > 50 else "Poor"
         st.metric("Average Staff Morale", f"{avg_morale:.1f}", morale_status)
+        
+        # Morale gauge
+        st.write("Morale Level:")
+        if avg_morale > 70:
+            st.success("High morale 🎉")
+        elif avg_morale > 50:
+            st.warning("Moderate morale 😊")
+        else:
+            st.error("Low morale 😔")
     
     with col2:
-        shortage_dist = filtered_df['staff_shortage_level'].value_counts(normalize=True) * 100
-        high_shortage = shortage_dist.get('high', 0)
-        st.metric("High Shortage Occurrence", f"{high_shortage:.1f}%")
+        high_shortage_pct = (shortage_dist.get('high', 0) / len(filtered_df)) * 100
+        st.metric("High Shortage Frequency", f"{high_shortage_pct:.1f}%")
+        
+        # Shortage status
+        if high_shortage_pct > 30:
+            st.error("Frequent staff shortages 🚨")
+        elif high_shortage_pct > 15:
+            st.warning("Occasional staff shortages ⚠️")
+        else:
+            st.success("Minimal staff shortages ✅")
 
 def display_icu_analysis(filtered_df, scenario):
     """Display ICU demand analysis"""
@@ -334,24 +329,20 @@ def display_icu_analysis(filtered_df, scenario):
     
     with col1:
         # ICU demand levels
-        fig, ax = plt.subplots(figsize=(8, 6))
         demand_counts = icu_data['ICU_demand_level'].value_counts()
+        demand_data = pd.DataFrame({
+            'Demand Level': demand_counts.index,
+            'Count': demand_counts.values
+        })
         
-        colors = {'low': '#2E86AB', 'moderate': '#F7B801', 'high': '#FF6B6B'}
-        color_list = [colors.get(level, '#999999') for level in demand_counts.index]
+        st.bar_chart(demand_data.set_index('Demand Level'))
         
-        wedges, texts, autotexts = ax.pie(demand_counts.values, labels=demand_counts.index, 
-                                        autopct='%1.1f%%', colors=color_list, startangle=90)
-        
-        for autotext in autotexts:
-            autotext.set_color('white')
-            autotext.set_fontweight('bold')
-        
-        ax.set_title(f'ICU Demand Level Distribution - {scenario}')
-        st.pyplot(fig)
+        # Most common demand level
+        most_common_demand = demand_counts.index[0]
+        st.write(f"**Most frequent demand level:** {most_common_demand}")
     
     with col2:
-        # ICU occupancy and metrics
+        # ICU metrics
         avg_icu_occupancy = icu_data['occupancy_rate'].mean() * 100
         icu_refusal_rate = (icu_data['patients_refused'].sum() / icu_data['patients_request'].sum() * 100) if icu_data['patients_request'].sum() > 0 else 0
         
@@ -359,7 +350,7 @@ def display_icu_analysis(filtered_df, scenario):
         st.metric("ICU Refusal Rate", f"{icu_refusal_rate:.1f}%")
         st.metric("ICU Patients Admitted", f"{icu_data['patients_admitted'].sum():,}")
         
-        # ICU demand trends
+        # ICU capacity status
         st.write("**ICU Capacity Status:**")
         if avg_icu_occupancy > 90:
             st.error("🚨 Critical: ICU near full capacity")
@@ -368,55 +359,59 @@ def display_icu_analysis(filtered_df, scenario):
         else:
             st.success("✅ Stable: ICU capacity adequate")
 
-def display_comparison_chart(df, filtered_df, scenario):
-    """Display comparison with baseline"""
+def display_comparison_analysis(df, filtered_df, scenario):
+    """Display comparison with baseline using Streamlit components"""
     
     st.subheader("📈 Scenario vs Baseline Comparison")
     
     # Calculate baseline (normal operations)
     baseline_df = df[df['event'] == 'none']
     
+    # Comparison metrics
+    metrics = ['Bed Occupancy', 'Staff Morale', 'Refusal Rate']
+    baseline_values = [
+        baseline_df['occupancy_rate'].mean() * 100,
+        baseline_df['staff_morale'].mean(),
+        (baseline_df['patients_refused'].sum() / baseline_df['patients_request'].sum() * 100) if baseline_df['patients_request'].sum() > 0 else 0
+    ]
+    scenario_values = [
+        filtered_df['occupancy_rate'].mean() * 100,
+        filtered_df['staff_morale'].mean(),
+        (filtered_df['patients_refused'].sum() / filtered_df['patients_request'].sum() * 100) if filtered_df['patients_request'].sum() > 0 else 0
+    ]
+    
+    # Display comparison table
     comparison_data = {
-        'Metric': ['Bed Occupancy', 'Staff Morale', 'Refusal Rate', 'ICU Demand'],
-        'Baseline': [
-            baseline_df['occupancy_rate'].mean() * 100,
-            baseline_df['staff_morale'].mean(),
-            (baseline_df['patients_refused'].sum() / baseline_df['patients_request'].sum() * 100) if baseline_df['patients_request'].sum() > 0 else 0,
-            baseline_df[baseline_df['service'] == 'ICU']['ICU_demand_level'].map({'low': 1, 'moderate': 2, 'high': 3}).mean() if not baseline_df[baseline_df['service'] == 'ICU'].empty else 0
-        ],
-        'Scenario': [
-            filtered_df['occupancy_rate'].mean() * 100,
-            filtered_df['staff_morale'].mean(),
-            (filtered_df['patients_refused'].sum() / filtered_df['patients_request'].sum() * 100) if filtered_df['patients_request'].sum() > 0 else 0,
-            filtered_df[filtered_df['service'] == 'ICU']['ICU_demand_level'].map({'low': 1, 'moderate': 2, 'high': 3}).mean() if not filtered_df[filtered_df['service'] == 'ICU'].empty else 0
-        ]
+        'Metric': metrics,
+        'Baseline': [f"{val:.1f}{'%' if i != 1 else ''}" for i, val in enumerate(baseline_values)],
+        f'{scenario}': [f"{val:.1f}{'%' if i != 1 else ''}" for i, val in enumerate(scenario_values)],
+        'Change': [f"{'📈' if scenario_values[i] > baseline_values[i] else '📉' if scenario_values[i] < baseline_values[i] else '➡️'} {abs(scenario_values[i] - baseline_values[i]):.1f}{'%' if i != 1 else ''}" 
+                 for i in range(len(metrics))]
     }
     
     comparison_df = pd.DataFrame(comparison_data)
+    st.table(comparison_df)
     
-    fig, ax = plt.subplots(figsize=(10, 6))
+    # Summary insights
+    st.subheader("💡 Key Insights")
     
-    x = np.arange(len(comparison_df))
-    width = 0.35
+    occupancy_change = scenario_values[0] - baseline_values[0]
+    morale_change = scenario_values[1] - baseline_values[1]
+    refusal_change = scenario_values[2] - baseline_values[2]
     
-    ax.bar(x - width/2, comparison_df['Baseline'], width, label='Baseline (Normal)', alpha=0.7)
-    ax.bar(x + width/2, comparison_df['Scenario'], width, label=f'Scenario ({scenario})', alpha=0.7)
+    if occupancy_change > 10:
+        st.error(f"**Occupancy Impact:** {scenario} shows {occupancy_change:.1f}% higher bed occupancy than normal")
+    elif occupancy_change > 5:
+        st.warning(f"**Occupancy Impact:** {scenario} shows {occupancy_change:.1f}% higher bed occupancy than normal")
+    else:
+        st.success(f"**Occupancy Impact:** Bed occupancy is similar to normal operations")
     
-    ax.set_xlabel('Metrics')
-    ax.set_ylabel('Values')
-    ax.set_title(f'Scenario Comparison: {scenario} vs Baseline')
-    ax.set_xticks(x)
-    ax.set_xticklabels(comparison_df['Metric'])
-    ax.legend()
-    
-    # Add value labels on bars
-    for i, (baseline, scenario_val) in enumerate(zip(comparison_df['Baseline'], comparison_df['Scenario'])):
-        ax.text(i - width/2, baseline + 1, f'{baseline:.1f}', ha='center', va='bottom')
-        ax.text(i + width/2, scenario_val + 1, f'{scenario_val:.1f}', ha='center', va='bottom')
-    
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    st.pyplot(fig)
+    if morale_change < -10:
+        st.error(f"**Staff Impact:** Staff morale is {abs(morale_change):.1f} points lower than normal")
+    elif morale_change < -5:
+        st.warning(f"**Staff Impact:** Staff morale is {abs(morale_change):.1f} points lower than normal")
+    else:
+        st.success(f"**Staff Impact:** Staff morale remains stable")
 
 def display_detailed_table(filtered_df):
     """Display detailed data table"""
@@ -432,12 +427,11 @@ def display_detailed_table(filtered_df):
     
     # Add calculated columns
     detailed_df['refusal_rate'] = (detailed_df['patients_refused'] / detailed_df['patients_request'] * 100).round(1)
+    detailed_df['occupancy_rate_pct'] = (detailed_df['occupancy_rate'] * 100).round(1)
     
+    # Display the table
     st.dataframe(
-        detailed_df.style.format({
-            'occupancy_rate': '{:.1%}',
-            'refusal_rate': '{:.1f}%'
-        }).background_gradient(subset=['occupancy_rate', 'refusal_rate'], cmap='RdYlGn_r'),
+        detailed_df,
         use_container_width=True,
         height=400
     )
