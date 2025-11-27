@@ -78,7 +78,7 @@ def main():
         if uploaded_file is not None:
             if st.session_state.df is None:
                 st.session_state.df = load_data(uploaded_file)
-                st.success("✅ Dataset loaded successfully!")
+                st.success("Dataset loaded successfully!")
         
         st.header("🎯 Analysis Scenarios")
         scenario = st.selectbox(
@@ -146,7 +146,7 @@ def display_scenario_analysis(df, scenario):
     metrics = calculate_metrics(filtered_df)
     
     # Key Metrics
-    st.subheader("📊 Key Performance Indicators")
+    st.subheader("Key Performance Indicators")
     display_key_metrics(filtered_df, scenario)
     
     # Charts and Analysis
@@ -225,7 +225,7 @@ def display_key_metrics(filtered_df, scenario):
     
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("🛏️ Average Bed Occupancy", f"{avg_occupancy:.1f}%", occupancy_status)
+        st.metric("Average Bed Occupancy", f"{avg_occupancy:.1f}%", occupancy_status)
         st.progress(avg_occupancy / 100)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -311,7 +311,7 @@ def display_occupancy_analysis(filtered_df, scenario):
 def display_staff_analysis(filtered_df, scenario):
     """Display staff shortage analysis"""
     
-    st.subheader("👨‍⚕️ Staff Shortage Analysis")
+    st.subheader("Staff Shortage Analysis")
     
     shortage_dist = filtered_df['staff_shortage_level'].value_counts()
     shortage_data = pd.DataFrame({
@@ -351,7 +351,7 @@ def display_staff_analysis(filtered_df, scenario):
 def display_icu_analysis(filtered_df, scenario):
     """Display ICU demand analysis"""
     
-    st.subheader("💊 ICU Demand Analysis")
+    st.subheader("ICU Demand Analysis")
     
     icu_data = filtered_df[filtered_df['service'] == 'ICU']
     
@@ -443,7 +443,7 @@ def display_ai_recommendations(scenario, metrics, filtered_df):
     """Display AI-powered recommendations"""
     
     st.markdown("---")
-    st.subheader("🤖 AI Recommendations & Action Plan")
+    st.subheader("Recommendations & Action Plan")
     
     advice_list = generate_advice(scenario, metrics, filtered_df)
     
