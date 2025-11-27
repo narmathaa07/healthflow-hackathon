@@ -33,6 +33,27 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         margin: 0.5rem 0;
     }
+    .advice-card {
+        background-color: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 5px solid #28a745;
+    }
+    .warning-card {
+        background-color: #fff3cd;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 5px solid #ffc107;
+    }
+    .critical-card {
+        background-color: #f8d7da;
+        padding: 1.5rem;
+        border-radius: 10px;
+        margin: 1rem 0;
+        border-left: 5px solid #dc3545;
+    }
     .status-good { color: #28a745; font-weight: bold; }
     .status-warning { color: #ffc107; font-weight: bold; }
     .status-critical { color: #dc3545; font-weight: bold; }
@@ -112,6 +133,9 @@ def display_scenario_analysis(df, scenario):
     # Filter data based on scenario
     filtered_df = filter_data_by_scenario(df, scenario)
     
+    # Calculate metrics for advice system
+    metrics = calculate_metrics(filtered_df)
+    
     # Key Metrics
     st.subheader("📊 Key Performance Indicators")
     display_key_metrics(filtered_df, scenario)
@@ -126,6 +150,9 @@ def display_scenario_analysis(df, scenario):
     with col2:
         display_icu_analysis(filtered_df, scenario)
         display_comparison_analysis(df, filtered_df, scenario)
+    
+    # NEW: AI Recommendations Section
+    display_ai_recommendations(scenario, metrics, filtered_df)
     
     # Detailed Data
     st.subheader("📋 Detailed Service Data")
@@ -154,6 +181,37 @@ def filter_data_by_scenario(df, scenario):
         return df[(df['event'].isin(crisis_events)) | high_demand]
     
     return df
+
+def calculate_metrics(filtered_df):
+    """Calculate metrics for advice system"""
+    
+    # Bed Occupancy
+    avg_occupancy = filtered_df['occupancy_rate'].mean() * 100
+    
+    # Staff Shortage
+    shortage_map = {'low': 1, 'moderate': 2, 'high': 3}
+    filtered_df['shortage_score'] = filtered_df['staff_shortage_level'].map(shortage_map)
+    avg_shortage = filtered_df['shortage_score'].mean()
+    
+    # ICU Demand
+    icu_data = filtered_df[filtered_df['service'] == 'ICU']
+    if not icu_data.empty:
+        icu_data['demand_score'] = icu_data['ICU_demand_level'].map(shortage_map)
+        avg_icu_demand = icu_data['demand_score'].mean()
+    else:
+        avg_icu_demand = 0
+    
+    # Refusal Rate
+    total_requested = filtered_df['patients_request'].sum()
+    total_refused = filtered_df['patients_refused'].sum()
+    refusal_rate = (total_refused / total_requested * 100) if total_requested > 0 else 0
+    
+    return {
+        'occupancy': avg_occupancy,
+        'shortage': avg_shortage,
+        'icu_demand': avg_icu_demand,
+        'refusal_rate': refusal_rate
+    }
 
 def display_key_metrics(filtered_df, scenario):
     """Display key metrics for the scenario"""
@@ -412,6 +470,204 @@ def display_comparison_analysis(df, filtered_df, scenario):
         st.warning(f"**Staff Impact:** Staff morale is {abs(morale_change):.1f} points lower than normal")
     else:
         st.success(f"**Staff Impact:** Staff morale remains stable")
+
+# NEW AI RECOMMENDATIONS SECTION
+def display_ai_recommendations(scenario, metrics, filtered_df):
+    """Display AI-powered recommendations"""
+    
+    st.markdown("---")
+    st.subheader("🤖 AI Recommendations & Action Plan")
+    
+    # Generate advice
+    advice_list = generate_advice(scenario, metrics, filtered_df)
+    
+    if not advice_list:
+        st.info("🎯 **System Operating Optimally** - No immediate actions required")
+        return
+    
+    # Categorize advice by priority
+    critical_advice = [adv for adv in advice_list if "🔴" in adv[0]]
+    warning_advice = [adv for adv in advice_list if "🟡" in adv[0]]
+    normal_advice = [adv for adv in advice_list if "🟢" in adv[0]]
+    
+    # Display critical advice first
+    for priority, advice_group in [("🚨 Critical Actions", critical_advice), 
+                                 ("⚠️ Important Recommendations", warning_advice),
+                                 ("💡 Optimization Opportunities", normal_advice)]:
+        
+        if advice_group:
+            st.write(f"**{priority}**")
+            
+            for title, description in advice_group:
+                if "🔴" in title:
+                    st.markdown(f'<div class="critical-card"><h4>{title}</h4><p>{description}</p></div>', unsafe_allow_html=True)
+                elif "🟡" in title:
+                    st.markdown(f'<div class="warning-card"><h4>{title}</h4><p>{description}</p></div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="advice-card"><h4>{title}</h4><p>{description}</p></div>', unsafe_allow_html=True)
+
+def generate_advice(scenario, metrics, filtered_df):
+    """Generate AI-powered advice based on scenario and metrics"""
+    
+    advice = []
+    
+    # Extract metrics
+    occupancy = metrics['occupancy']
+    shortage = metrics['shortage']
+    icu_demand = metrics['icu_demand']
+    refusal_rate = metrics['refusal_rate']
+    
+    # Scenario-specific advice
+    if scenario == "Normal Operations":
+        advice.extend(generate_normal_advice(occupancy, shortage, icu_demand, refusal_rate))
+    elif scenario == "Weekend Surge":
+        advice.extend(generate_weekend_advice(occupancy, shortage, icu_demand, refusal_rate))
+    elif scenario == "Seasonal Outbreak":
+        advice.extend(generate_seasonal_advice(occupancy, shortage, icu_demand, refusal_rate))
+    elif scenario == "Emergency Crisis":
+        advice.extend(generate_emergency_advice(occupancy, shortage, icu_demand, refusal_rate))
+    
+    # General cross-cutting advice
+    advice.extend(generate_general_advice(occupancy, shortage, icu_demand, refusal_rate))
+    
+    return advice
+
+def generate_normal_advice(occupancy, shortage, icu_demand, refusal_rate):
+    """Advice for normal operations"""
+    advice = []
+    
+    if occupancy < 70:
+        advice.append(("🟢 **Optimization Opportunity**", 
+                     "Consider consolidating wards to improve efficiency and reduce operational costs"))
+    
+    if shortage > 2.0:
+        advice.append(("🟡 **Staff Development**", 
+                     "Invest in staff training and retention programs to address moderate shortage levels"))
+    
+    if refusal_rate < 5:
+        advice.append(("🟢 **Capacity Planning**", 
+                     "Excellent patient access. Consider expanding services or specialty departments"))
+    
+    return advice
+
+def generate_weekend_advice(occupancy, shortage, icu_demand, refusal_rate):
+    """Advice for weekend surge"""
+    advice = []
+    
+    if occupancy > 85:
+        advice.append(("🟡 **Weekend Staffing**", 
+                     "Implement flexible weekend scheduling with premium pay to maintain adequate coverage"))
+    
+    if refusal_rate > 15:
+        advice.append(("🟡 **Patient Flow**", 
+                     "Create weekend-specific discharge protocols to free up beds more quickly"))
+    
+    if shortage > 2.2:
+        advice.append(("🟡 **Cross-Training**", 
+                     "Cross-train staff for multiple roles to handle weekend staffing gaps"))
+    
+    return advice
+
+def generate_seasonal_advice(occupancy, shortage, icu_demand, refusal_rate):
+    """Advice for seasonal outbreaks"""
+    advice = []
+    
+    if occupancy > 90:
+        advice.append(("🟡 **Seasonal Preparedness**", 
+                     "Pre-arrange temporary bed capacity and identify overflow areas in advance"))
+    
+    if icu_demand > 2.5:
+        advice.append(("🟡 **ICU Planning**", 
+                     "Establish step-down units and train general staff for ICU support during peaks"))
+    
+    if refusal_rate > 20:
+        advice.append(("🟡 **Triage Optimization**", 
+                     "Implement enhanced triage protocols to prioritize critical cases during high demand"))
+    
+    return advice
+
+def generate_emergency_advice(occupancy, shortage, icu_demand, refusal_rate):
+    """Advice for emergency crises"""
+    advice = []
+    
+    if occupancy > 95:
+        advice.append(("🔴 **Crisis Response**", 
+                     "Activate emergency overflow protocol and consider postponing elective procedures"))
+    
+    if shortage > 2.8:
+        advice.append(("🔴 **Staff Mobilization**", 
+                     "Implement mandatory overtime and recall off-duty staff immediately"))
+    
+    if icu_demand > 2.7:
+        advice.append(("🔴 **ICU Expansion**", 
+                     "Convert recovery areas to temporary ICU beds and bring in critical care specialists"))
+    
+    if refusal_rate > 30:
+        advice.append(("🔴 **Patient Diversion**", 
+                     "Coordinate with nearby hospitals for patient transfers and activate emergency transport"))
+    
+    return advice
+
+def generate_general_advice(occupancy, shortage, icu_demand, refusal_rate):
+    """General advice applicable to all scenarios"""
+    advice = []
+    
+    # Occupancy-based advice
+    if occupancy > 95:
+        advice.append(("🔴 **Critical Occupancy**", 
+                     "Immediate action required: Open all reserve beds, activate emergency staffing"))
+    elif occupancy > 85:
+        advice.append(("🟡 **High Occupancy**", 
+                     "Monitor closely: Prepare overflow areas, review discharge readiness"))
+    
+    # Staff shortage advice
+    if shortage > 2.5:
+        advice.append(("🔴 **Severe Staff Shortage**", 
+                     "Critical staffing levels: Deploy administrative staff to clinical support roles"))
+    elif shortage > 2.0:
+        advice.append(("🟡 **Moderate Staff Shortage**", 
+                     "Consider agency staff or float pool activation"))
+    
+    # ICU demand advice
+    if icu_demand > 2.5:
+        advice.append(("🔴 **High ICU Demand**", 
+                     "Prioritize ICU admissions, expedite step-down transfers"))
+    
+    # Refusal rate advice
+    if refusal_rate > 25:
+        advice.append(("🔴 **Critical Refusal Rate**", 
+                     "System overwhelmed: Implement disaster triage protocols"))
+    elif refusal_rate > 15:
+        advice.append(("🟡 **Elevated Refusal Rate**", 
+                     "Optimize bed turnover and review admission criteria"))
+    
+    return advice
+
+def display_detailed_table(filtered_df):
+    """Display detailed data table"""
+    
+    # Select relevant columns for display
+    display_columns = ['week', 'month', 'service', 'available_beds', 'patients_request', 
+                     'patients_admitted', 'patients_refused', 'occupancy_rate', 
+                     'staff_shortage_level', 'ICU_demand_level', 'event']
+    
+    # Filter to only include available columns
+    available_columns = [col for col in display_columns if col in filtered_df.columns]
+    detailed_df = filtered_df[available_columns]
+    
+    # Add calculated columns
+    detailed_df['refusal_rate'] = (detailed_df['patients_refused'] / detailed_df['patients_request'] * 100).round(1)
+    detailed_df['occupancy_rate_pct'] = (detailed_df['occupancy_rate'] * 100).round(1)
+    
+    # Display the table
+    st.dataframe(
+        detailed_df,
+        use_container_width=True,
+        height=400
+    )
+
+if __name__ == "__main__":
+    main()
 
 def display_detailed_table(filtered_df):
     """Display detailed data table"""
