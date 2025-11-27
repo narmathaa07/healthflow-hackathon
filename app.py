@@ -54,43 +54,52 @@ st.markdown("""
         margin: 1rem 0;
         border-left: 5px solid #dc3545;
     }
-    .status-good { color: #28a745; font-weight: bold; }
-    .status-warning { color: #ffc107; font-weight: bold; }
-    .status-critical { color: #dc3545; font-weight: bold; }
 </style>
 """, unsafe_allow_html=True)
+
+# Initialize session state
+if 'df' not in st.session_state:
+    st.session_state.df = None
+if 'scenario' not in st.session_state:
+    st.session_state.scenario = "Normal Operations"
+
+@st.cache_data
+def load_data(uploaded_file):
+    return pd.read_csv(uploaded_file)
 
 def main():
     st.markdown('<h1 class="main-header">🏥 Hospital Scenario Analysis Dashboard</h1>', unsafe_allow_html=True)
     
-    # File upload
-    st.sidebar.header("📁 Data Upload")
-    uploaded_file = st.sidebar.file_uploader("Upload your hospital dataset", type=["csv"])
-    
-    if uploaded_file is not None:
-        df = load_data(uploaded_file)
-        st.sidebar.success("✅ Dataset loaded successfully!")
+    # Sidebar - only create widgets once
+    with st.sidebar:
+        st.header("📁 Data Upload")
+        uploaded_file = st.file_uploader("Upload your hospital dataset", type=["csv"], key="file_uploader")
         
-        # Main analysis
-        st.sidebar.header("🎯 Analysis Scenarios")
-        scenario = st.sidebar.selectbox(
+        if uploaded_file is not None:
+            if st.session_state.df is None:
+                st.session_state.df = load_data(uploaded_file)
+                st.success("✅ Dataset loaded successfully!")
+        
+        st.header("🎯 Analysis Scenarios")
+        scenario = st.selectbox(
             "Select Scenario to Analyze",
-            ["Normal Operations", "Weekend Surge", "Seasonal Outbreak", "Emergency Crisis"]
+            ["Normal Operations", "Weekend Surge", "Seasonal Outbreak", "Emergency Crisis"],
+            key="scenario_selector"
         )
         
-        display_scenario_analysis(df, scenario)
-        
+        # Update session state
+        st.session_state.scenario = scenario
+    
+    # Main content area
+    if st.session_state.df is not None:
+        display_scenario_analysis(st.session_state.df, st.session_state.scenario)
     else:
-        st.info("👆 Please upload your hospital dataset (final_cleaned_dataset.csv) to begin analysis")
         display_sample_interface()
-
-@st.cache_data
-def load_data(uploaded_file):
-    df = pd.read_csv(uploaded_file)
-    return df
 
 def display_sample_interface():
     """Display sample interface before data upload"""
+    st.info("👆 Please upload your hospital dataset (final_cleaned_dataset.csv) to begin analysis")
+    
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -151,7 +160,7 @@ def display_scenario_analysis(df, scenario):
         display_icu_analysis(filtered_df, scenario)
         display_comparison_analysis(df, filtered_df, scenario)
     
-    # NEW: AI Recommendations Section
+    # AI Recommendations Section
     display_ai_recommendations(scenario, metrics, filtered_df)
     
     # Detailed Data
@@ -162,20 +171,16 @@ def filter_data_by_scenario(df, scenario):
     """Filter data based on the selected scenario"""
     
     if scenario == "Normal Operations":
-        # Normal conditions - exclude events and extreme values
         return df[df['event'] == 'none']
     
     elif scenario == "Weekend Surge":
-        # Weekend-like conditions - higher patient volume, some staff issues
         weekend_weeks = df['week'].sample(frac=0.3, random_state=42).unique()
         return df[df['week'].isin(weekend_weeks)]
     
     elif scenario == "Seasonal Outbreak":
-        # Flu season conditions
         return df[df['event'] == 'flu']
     
     elif scenario == "Emergency Crisis":
-        # Crisis conditions - strikes, high demand
         crisis_events = ['strike', 'flu']
         high_demand = df['patients_request'] > df['patients_request'].quantile(0.75)
         return df[(df['event'].isin(crisis_events)) | high_demand]
@@ -185,15 +190,12 @@ def filter_data_by_scenario(df, scenario):
 def calculate_metrics(filtered_df):
     """Calculate metrics for advice system"""
     
-    # Bed Occupancy
     avg_occupancy = filtered_df['occupancy_rate'].mean() * 100
     
-    # Staff Shortage
     shortage_map = {'low': 1, 'moderate': 2, 'high': 3}
     filtered_df['shortage_score'] = filtered_df['staff_shortage_level'].map(shortage_map)
     avg_shortage = filtered_df['shortage_score'].mean()
     
-    # ICU Demand
     icu_data = filtered_df[filtered_df['service'] == 'ICU']
     if not icu_data.empty:
         icu_data['demand_score'] = icu_data['ICU_demand_level'].map(shortage_map)
@@ -201,7 +203,6 @@ def calculate_metrics(filtered_df):
     else:
         avg_icu_demand = 0
     
-    # Refusal Rate
     total_requested = filtered_df['patients_request'].sum()
     total_refused = filtered_df['patients_refused'].sum()
     refusal_rate = (total_refused / total_requested * 100) if total_requested > 0 else 0
@@ -224,11 +225,7 @@ def display_key_metrics(filtered_df, scenario):
     
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric(
-            "🛏️ Average Bed Occupancy", 
-            f"{avg_occupancy:.1f}%",
-            occupancy_status
-        )
+        st.metric("🛏️ Average Bed Occupancy", f"{avg_occupancy:.1f}%", occupancy_status)
         st.progress(avg_occupancy / 100)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -240,11 +237,7 @@ def display_key_metrics(filtered_df, scenario):
     
     with col2:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric(
-            "👨‍⚕️ Staff Shortage Level",
-            shortage_status,
-            f"Score: {avg_shortage:.1f}/3"
-        )
+        st.metric("👨‍⚕️ Staff Shortage Level", shortage_status, f"Score: {avg_shortage:.1f}/3")
         st.progress(avg_shortage / 3)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -261,11 +254,7 @@ def display_key_metrics(filtered_df, scenario):
     
     with col3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric(
-            "💊 ICU Demand Level",
-            demand_status,
-            f"Score: {avg_demand:.1f}/3"
-        )
+        st.metric("💊 ICU Demand Level", demand_status, f"Score: {avg_demand:.1f}/3")
         st.progress(avg_demand / 3)
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -277,24 +266,17 @@ def display_key_metrics(filtered_df, scenario):
     
     with col4:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric(
-            "❌ Patient Refusal Rate",
-            f"{refusal_rate:.1f}%",
-            refusal_status
-        )
-        st.progress(min(refusal_rate / 50, 1.0))  # Cap at 50% for visualization
+        st.metric("❌ Patient Refusal Rate", f"{refusal_rate:.1f}%", refusal_status)
+        st.progress(min(refusal_rate / 50, 1.0))
         st.write(f"{total_refused:,} refused of {total_requested:,} requested")
         st.markdown('</div>', unsafe_allow_html=True)
 
 def display_occupancy_analysis(filtered_df, scenario):
-    """Display bed occupancy analysis using Streamlit charts"""
+    """Display bed occupancy analysis"""
     
     st.subheader("🛏️ Bed Occupancy Analysis")
     
-    # Occupancy by service
     occupancy_by_service = filtered_df.groupby('service')['occupancy_rate'].mean() * 100
-    
-    # Create a bar chart using Streamlit
     chart_data = pd.DataFrame({
         'Service': occupancy_by_service.index,
         'Occupancy Rate %': occupancy_by_service.values
@@ -331,16 +313,12 @@ def display_staff_analysis(filtered_df, scenario):
     
     st.subheader("👨‍⚕️ Staff Shortage Analysis")
     
-    # Staff shortage distribution
     shortage_dist = filtered_df['staff_shortage_level'].value_counts()
-    
-    # Create pie chart data
     shortage_data = pd.DataFrame({
         'Level': shortage_dist.index,
         'Count': shortage_dist.values
     })
     
-    # Display as bar chart
     st.bar_chart(shortage_data.set_index('Level'))
     
     # Staff metrics
@@ -351,7 +329,6 @@ def display_staff_analysis(filtered_df, scenario):
         morale_status = "Good" if avg_morale > 70 else "Fair" if avg_morale > 50 else "Poor"
         st.metric("Average Staff Morale", f"{avg_morale:.1f}", morale_status)
         
-        # Morale gauge
         st.write("Morale Level:")
         if avg_morale > 70:
             st.success("High morale 🎉")
@@ -364,7 +341,6 @@ def display_staff_analysis(filtered_df, scenario):
         high_shortage_pct = (shortage_dist.get('high', 0) / len(filtered_df)) * 100
         st.metric("High Shortage Frequency", f"{high_shortage_pct:.1f}%")
         
-        # Shortage status
         if high_shortage_pct > 30:
             st.error("Frequent staff shortages 🚨")
         elif high_shortage_pct > 15:
@@ -386,7 +362,6 @@ def display_icu_analysis(filtered_df, scenario):
     col1, col2 = st.columns(2)
     
     with col1:
-        # ICU demand levels
         demand_counts = icu_data['ICU_demand_level'].value_counts()
         demand_data = pd.DataFrame({
             'Demand Level': demand_counts.index,
@@ -394,13 +369,10 @@ def display_icu_analysis(filtered_df, scenario):
         })
         
         st.bar_chart(demand_data.set_index('Demand Level'))
-        
-        # Most common demand level
         most_common_demand = demand_counts.index[0]
         st.write(f"**Most frequent demand level:** {most_common_demand}")
     
     with col2:
-        # ICU metrics
         avg_icu_occupancy = icu_data['occupancy_rate'].mean() * 100
         icu_refusal_rate = (icu_data['patients_refused'].sum() / icu_data['patients_request'].sum() * 100) if icu_data['patients_request'].sum() > 0 else 0
         
@@ -408,7 +380,6 @@ def display_icu_analysis(filtered_df, scenario):
         st.metric("ICU Refusal Rate", f"{icu_refusal_rate:.1f}%")
         st.metric("ICU Patients Admitted", f"{icu_data['patients_admitted'].sum():,}")
         
-        # ICU capacity status
         st.write("**ICU Capacity Status:**")
         if avg_icu_occupancy > 90:
             st.error("🚨 Critical: ICU near full capacity")
@@ -418,14 +389,12 @@ def display_icu_analysis(filtered_df, scenario):
             st.success("✅ Stable: ICU capacity adequate")
 
 def display_comparison_analysis(df, filtered_df, scenario):
-    """Display comparison with baseline using Streamlit components"""
+    """Display comparison with baseline"""
     
     st.subheader("📈 Scenario vs Baseline Comparison")
     
-    # Calculate baseline (normal operations)
     baseline_df = df[df['event'] == 'none']
     
-    # Comparison metrics
     metrics = ['Bed Occupancy', 'Staff Morale', 'Refusal Rate']
     baseline_values = [
         baseline_df['occupancy_rate'].mean() * 100,
@@ -438,7 +407,6 @@ def display_comparison_analysis(df, filtered_df, scenario):
         (filtered_df['patients_refused'].sum() / filtered_df['patients_request'].sum() * 100) if filtered_df['patients_request'].sum() > 0 else 0
     ]
     
-    # Display comparison table
     comparison_data = {
         'Metric': metrics,
         'Baseline': [f"{val:.1f}{'%' if i != 1 else ''}" for i, val in enumerate(baseline_values)],
@@ -471,14 +439,12 @@ def display_comparison_analysis(df, filtered_df, scenario):
     else:
         st.success(f"**Staff Impact:** Staff morale remains stable")
 
-# NEW AI RECOMMENDATIONS SECTION
 def display_ai_recommendations(scenario, metrics, filtered_df):
     """Display AI-powered recommendations"""
     
     st.markdown("---")
     st.subheader("🤖 AI Recommendations & Action Plan")
     
-    # Generate advice
     advice_list = generate_advice(scenario, metrics, filtered_df)
     
     if not advice_list:
@@ -510,8 +476,6 @@ def generate_advice(scenario, metrics, filtered_df):
     """Generate AI-powered advice based on scenario and metrics"""
     
     advice = []
-    
-    # Extract metrics
     occupancy = metrics['occupancy']
     shortage = metrics['shortage']
     icu_demand = metrics['icu_demand']
@@ -527,170 +491,89 @@ def generate_advice(scenario, metrics, filtered_df):
     elif scenario == "Emergency Crisis":
         advice.extend(generate_emergency_advice(occupancy, shortage, icu_demand, refusal_rate))
     
-    # General cross-cutting advice
+    # General advice
     advice.extend(generate_general_advice(occupancy, shortage, icu_demand, refusal_rate))
     
     return advice
 
 def generate_normal_advice(occupancy, shortage, icu_demand, refusal_rate):
-    """Advice for normal operations"""
     advice = []
-    
     if occupancy < 70:
-        advice.append(("🟢 **Optimization Opportunity**", 
-                     "Consider consolidating wards to improve efficiency and reduce operational costs"))
-    
+        advice.append(("🟢 **Optimization Opportunity**", "Consider consolidating wards to improve efficiency"))
     if shortage > 2.0:
-        advice.append(("🟡 **Staff Development**", 
-                     "Invest in staff training and retention programs to address moderate shortage levels"))
-    
+        advice.append(("🟡 **Staff Development**", "Invest in staff training and retention programs"))
     if refusal_rate < 5:
-        advice.append(("🟢 **Capacity Planning**", 
-                     "Excellent patient access. Consider expanding services or specialty departments"))
-    
+        advice.append(("🟢 **Capacity Planning**", "Excellent patient access. Consider expanding services"))
     return advice
 
 def generate_weekend_advice(occupancy, shortage, icu_demand, refusal_rate):
-    """Advice for weekend surge"""
     advice = []
-    
     if occupancy > 85:
-        advice.append(("🟡 **Weekend Staffing**", 
-                     "Implement flexible weekend scheduling with premium pay to maintain adequate coverage"))
-    
+        advice.append(("🟡 **Weekend Staffing**", "Implement flexible weekend scheduling with premium pay"))
     if refusal_rate > 15:
-        advice.append(("🟡 **Patient Flow**", 
-                     "Create weekend-specific discharge protocols to free up beds more quickly"))
-    
+        advice.append(("🟡 **Patient Flow**", "Create weekend-specific discharge protocols"))
     if shortage > 2.2:
-        advice.append(("🟡 **Cross-Training**", 
-                     "Cross-train staff for multiple roles to handle weekend staffing gaps"))
-    
+        advice.append(("🟡 **Cross-Training**", "Cross-train staff for multiple roles"))
     return advice
 
 def generate_seasonal_advice(occupancy, shortage, icu_demand, refusal_rate):
-    """Advice for seasonal outbreaks"""
     advice = []
-    
     if occupancy > 90:
-        advice.append(("🟡 **Seasonal Preparedness**", 
-                     "Pre-arrange temporary bed capacity and identify overflow areas in advance"))
-    
+        advice.append(("🟡 **Seasonal Preparedness**", "Pre-arrange temporary bed capacity"))
     if icu_demand > 2.5:
-        advice.append(("🟡 **ICU Planning**", 
-                     "Establish step-down units and train general staff for ICU support during peaks"))
-    
+        advice.append(("🟡 **ICU Planning**", "Establish step-down units for ICU overflow"))
     if refusal_rate > 20:
-        advice.append(("🟡 **Triage Optimization**", 
-                     "Implement enhanced triage protocols to prioritize critical cases during high demand"))
-    
+        advice.append(("🟡 **Triage Optimization**", "Implement enhanced triage protocols"))
     return advice
 
 def generate_emergency_advice(occupancy, shortage, icu_demand, refusal_rate):
-    """Advice for emergency crises"""
     advice = []
-    
     if occupancy > 95:
-        advice.append(("🔴 **Crisis Response**", 
-                     "Activate emergency overflow protocol and consider postponing elective procedures"))
-    
+        advice.append(("🔴 **Crisis Response**", "Activate emergency overflow protocol"))
     if shortage > 2.8:
-        advice.append(("🔴 **Staff Mobilization**", 
-                     "Implement mandatory overtime and recall off-duty staff immediately"))
-    
+        advice.append(("🔴 **Staff Mobilization**", "Implement mandatory overtime immediately"))
     if icu_demand > 2.7:
-        advice.append(("🔴 **ICU Expansion**", 
-                     "Convert recovery areas to temporary ICU beds and bring in critical care specialists"))
-    
+        advice.append(("🔴 **ICU Expansion**", "Convert recovery areas to temporary ICU beds"))
     if refusal_rate > 30:
-        advice.append(("🔴 **Patient Diversion**", 
-                     "Coordinate with nearby hospitals for patient transfers and activate emergency transport"))
-    
+        advice.append(("🔴 **Patient Diversion**", "Coordinate with nearby hospitals for transfers"))
     return advice
 
 def generate_general_advice(occupancy, shortage, icu_demand, refusal_rate):
-    """General advice applicable to all scenarios"""
     advice = []
-    
-    # Occupancy-based advice
     if occupancy > 95:
-        advice.append(("🔴 **Critical Occupancy**", 
-                     "Immediate action required: Open all reserve beds, activate emergency staffing"))
+        advice.append(("🔴 **Critical Occupancy**", "Open all reserve beds, activate emergency staffing"))
     elif occupancy > 85:
-        advice.append(("🟡 **High Occupancy**", 
-                     "Monitor closely: Prepare overflow areas, review discharge readiness"))
+        advice.append(("🟡 **High Occupancy**", "Prepare overflow areas, review discharge readiness"))
     
-    # Staff shortage advice
     if shortage > 2.5:
-        advice.append(("🔴 **Severe Staff Shortage**", 
-                     "Critical staffing levels: Deploy administrative staff to clinical support roles"))
+        advice.append(("🔴 **Severe Staff Shortage**", "Deploy administrative staff to clinical support"))
     elif shortage > 2.0:
-        advice.append(("🟡 **Moderate Staff Shortage**", 
-                     "Consider agency staff or float pool activation"))
+        advice.append(("🟡 **Moderate Staff Shortage**", "Consider agency staff or float pool activation"))
     
-    # ICU demand advice
     if icu_demand > 2.5:
-        advice.append(("🔴 **High ICU Demand**", 
-                     "Prioritize ICU admissions, expedite step-down transfers"))
+        advice.append(("🔴 **High ICU Demand**", "Prioritize ICU admissions, expedite transfers"))
     
-    # Refusal rate advice
     if refusal_rate > 25:
-        advice.append(("🔴 **Critical Refusal Rate**", 
-                     "System overwhelmed: Implement disaster triage protocols"))
+        advice.append(("🔴 **Critical Refusal Rate**", "Implement disaster triage protocols"))
     elif refusal_rate > 15:
-        advice.append(("🟡 **Elevated Refusal Rate**", 
-                     "Optimize bed turnover and review admission criteria"))
+        advice.append(("🟡 **Elevated Refusal Rate**", "Optimize bed turnover and admission criteria"))
     
     return advice
 
 def display_detailed_table(filtered_df):
     """Display detailed data table"""
     
-    # Select relevant columns for display
     display_columns = ['week', 'month', 'service', 'available_beds', 'patients_request', 
                      'patients_admitted', 'patients_refused', 'occupancy_rate', 
                      'staff_shortage_level', 'ICU_demand_level', 'event']
     
-    # Filter to only include available columns
     available_columns = [col for col in display_columns if col in filtered_df.columns]
     detailed_df = filtered_df[available_columns]
     
-    # Add calculated columns
     detailed_df['refusal_rate'] = (detailed_df['patients_refused'] / detailed_df['patients_request'] * 100).round(1)
     detailed_df['occupancy_rate_pct'] = (detailed_df['occupancy_rate'] * 100).round(1)
     
-    # Display the table
-    st.dataframe(
-        detailed_df,
-        use_container_width=True,
-        height=400
-    )
-
-if __name__ == "__main__":
-    main()
-
-def display_detailed_table(filtered_df):
-    """Display detailed data table"""
-    
-    # Select relevant columns for display
-    display_columns = ['week', 'month', 'service', 'available_beds', 'patients_request', 
-                     'patients_admitted', 'patients_refused', 'occupancy_rate', 
-                     'staff_shortage_level', 'ICU_demand_level', 'event']
-    
-    # Filter to only include available columns
-    available_columns = [col for col in display_columns if col in filtered_df.columns]
-    detailed_df = filtered_df[available_columns]
-    
-    # Add calculated columns
-    detailed_df['refusal_rate'] = (detailed_df['patients_refused'] / detailed_df['patients_request'] * 100).round(1)
-    detailed_df['occupancy_rate_pct'] = (detailed_df['occupancy_rate'] * 100).round(1)
-    
-    # Display the table
-    st.dataframe(
-        detailed_df,
-        use_container_width=True,
-        height=400
-    )
+    st.dataframe(detailed_df, use_container_width=True, height=400)
 
 if __name__ == "__main__":
     main()
