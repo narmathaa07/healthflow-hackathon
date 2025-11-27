@@ -56,4 +56,5 @@ HealthFlow uses **AI forecasting** to predict hospital resource needs 7 days in 
 - **Data Processing**: Pandas, NumPy
 - **Deployment**: Streamlit Cloud
 
-## Project Structure
+##  Pitch Deck
+https://www.canva.com/design/DAG52oFo6p8/eiSNICfax6FHBLkmAvHyng/edit?utm_content=DAG52oFo6p8&utm_campaign=designshare&utm_medium=link2&utm_source=sharebutton
