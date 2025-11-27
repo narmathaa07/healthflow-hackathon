@@ -443,4 +443,4 @@ def display_detailed_table(filtered_df):
     )
 
 if __name__ == "__main__":
-    main()not None)
+    main()
