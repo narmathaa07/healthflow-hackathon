@@ -4,7 +4,7 @@ import numpy as np
 
 # Set page configuration
 st.set_page_config(
-    page_title="Hospital Scenario Analysis",
+    page_title="Hospital Utilization Analysis",
     page_icon="🏥",
     layout="wide",
     initial_sidebar_state="expanded"
